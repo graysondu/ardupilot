@@ -1,5 +1,3 @@
-#ifndef __OpticalFlow_H__
-#define __OpticalFlow_H__
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,82 +12,121 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#pragma once
 
 /*
  *       OpticalFlow.h - OpticalFlow Base Class for Ardupilot
  *       Code by Randy Mackay. DIYDrones.com
- *
- *       Methods:
- *               init() : initializate sensor and library.
- *               read   : reads latest value from OpticalFlow and
- *                        stores values in x,y, surface_quality parameter
- *               read_register()  : reads a value from the sensor (will be
- *                                  sensor specific)
- *               write_register() : writes a value to one of the sensor's
- *                                  register (will be sensor specific)
  */
 
-#include <AP_Math.h>
-#include <AP_AHRS.h>
+#include <AP_HAL/AP_HAL.h>
+#include <AP_Math/AP_Math.h>
+#include <GCS_MAVLink/GCS_MAVLink.h>
+
+class OpticalFlow_backend;
+class AP_AHRS_NavEKF;
 
 class OpticalFlow
 {
+    friend class OpticalFlow_backend;
+
 public:
-    // constructor
-    OpticalFlow(const AP_AHRS &ahrs);
+    OpticalFlow();
+
+    /* Do not allow copies */
+    OpticalFlow(const OpticalFlow &other) = delete;
+    OpticalFlow &operator=(const OpticalFlow&) = delete;
+
+    // get singleton instance
+    static OpticalFlow *get_singleton() {
+        return _singleton;
+    }
+
+    enum class OpticalFlowType {
+        NONE = 0,
+        PX4FLOW = 1,
+        PIXART = 2,
+        BEBOP = 3,
+        CXOF = 4,
+        MAVLINK = 5,
+        UAVCAN = 6,
+        SITL = 10
+    };
 
     // init - initialise sensor
-    virtual void init() {}
+    void init(uint32_t log_bit);
 
     // enabled - returns true if optical flow is enabled
-    bool enabled() const { return _enabled; }
+    bool enabled() const { return _type != (int8_t)OpticalFlowType::NONE; }
 
     // healthy - return true if the sensor is healthy
-    bool healthy() const { return _flags.healthy; }
+    bool healthy() const { return backend != nullptr && _flags.healthy; }
 
     // read latest values from sensor and fill in x,y and totals.
-    virtual void update() {}
+    void update(void);
+
+    // handle optical flow mavlink messages
+    void handle_msg(const mavlink_message_t *msg);
 
     // quality - returns the surface quality as a measure from 0 ~ 255
-    uint8_t quality() const { return _surface_quality; }
+    uint8_t quality() const { return _state.surface_quality; }
 
     // raw - returns the raw movement from the sensor
-    const Vector2i& raw() const { return _raw; }
+    const Vector2f& flowRate() const { return _state.flowRate; }
 
     // velocity - returns the velocity in m/s
-    const Vector2f& velocity() const { return _velocity; }
-
-    // device_id - returns device id
-    uint8_t device_id() const { return _device_id; }
-
-    // return ground distance in meters (if available)
-    float ground_distance_m() const { return _ground_distance_m; }
+    const Vector2f& bodyRate() const { return _state.bodyRate; }
 
     // last_update() - returns system time of last sensor update
-    uint32_t last_update() const { return _last_update; }
+    uint32_t last_update() const { return _last_update_ms; }
+
+    struct OpticalFlow_state {
+        uint8_t  surface_quality;   // image quality (below TBD you can't trust the dx,dy values returned)
+        Vector2f flowRate;          // optical flow angular rate in rad/sec measured about the X and Y body axis. A RH rotation about a sensor axis produces a positive rate.
+        Vector2f bodyRate;          // body inertial angular rate in rad/sec measured about the X and Y body axis. A RH rotation about a sensor axis produces a positive rate.
+    };
+
+    // return a 3D vector defining the position offset of the sensors focal point in metres relative to the body frame origin
+    const Vector3f &get_pos_offset(void) const {
+        return _pos_offset;
+    }
 
     // parameter var info table
     static const struct AP_Param::GroupInfo var_info[];
 
-protected:
+private:
+
+    static OpticalFlow *_singleton;
+
+    OpticalFlow_backend *backend;
 
     struct AP_OpticalFlow_Flags {
         uint8_t healthy     : 1;    // true if sensor is healthy
     } _flags;
 
-    // external references
-    const AP_AHRS &_ahrs;           // ahrs object
-
     // parameters
-    AP_Int8  _enabled;              // enabled/disabled flag
+    AP_Int8  _type;                 // user configurable sensor type
+    AP_Int16 _flowScalerX;          // X axis flow scale factor correction - parts per thousand
+    AP_Int16 _flowScalerY;          // Y axis flow scale factor correction - parts per thousand
+    AP_Int16 _yawAngle_cd;          // yaw angle of sensor X axis with respect to vehicle X axis - centi degrees
+    AP_Vector3f _pos_offset;        // position offset of the flow sensor in the body frame
+    AP_Int8  _address;              // address on the bus (allows selecting between 8 possible I2C addresses for px4flow)
 
-    // internal variables
-    uint8_t _device_id;             // device id
-    uint8_t  _surface_quality;      // image quality (below 15 you can't trust the dx,dy values returned)
-    Vector2i _raw;                  // raw x,y values from sensor
-    Vector2f _velocity;             // x, y velocity in m/s
-    float    _ground_distance_m;    // ground distance in m
-    uint32_t _last_update;          // millis() time of last update
+    // method called by backend to update frontend state:
+    void update_state(const OpticalFlow_state &state);
+
+    // state filled in by backend
+    struct OpticalFlow_state _state;
+
+    uint32_t _last_update_ms;        // millis() time of last update
+
+    void Log_Write_Optflow();
+    uint32_t _log_bit = -1;     // bitmask bit which indicates if we should log.  -1 means we always log
+
 };
 
-#endif
+namespace AP {
+    OpticalFlow *opticalflow();
+}
+
+#include "OpticalFlow_backend.h"

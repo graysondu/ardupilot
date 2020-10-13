@@ -59,6 +59,11 @@ void ModeSmartRTL::run()
     }
 }
 
+bool ModeSmartRTL::is_landing() const
+{
+    return smart_rtl_state == SmartRTL_Land;
+}
+
 void ModeSmartRTL::wait_cleanup_run()
 {
     // hover at current target position
@@ -144,9 +149,26 @@ void ModeSmartRTL::pre_land_position_run()
 // save current position for use by the smart_rtl flight mode
 void ModeSmartRTL::save_position()
 {
-    const bool should_save_position = motors->armed() && (copter.control_mode != SMART_RTL);
+    const bool should_save_position = motors->armed() && (copter.control_mode != Mode::Number::SMART_RTL);
 
     copter.g2.smart_rtl.update(copter.position_ok(), should_save_position);
+}
+
+bool ModeSmartRTL::get_wp(Location& destination)
+{
+    // provide target in states which use wp_nav
+    switch (smart_rtl_state) {
+    case SmartRTL_WaitForPathCleanup:
+    case SmartRTL_PathFollow:
+    case SmartRTL_PreLandPosition:
+    case SmartRTL_Descend:
+        return wp_nav->get_wp_destination(destination);
+    case SmartRTL_Land:
+        return false;
+    }
+
+    // we should never get here but just in case
+    return false;
 }
 
 uint32_t ModeSmartRTL::wp_distance() const

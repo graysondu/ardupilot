@@ -8,12 +8,6 @@
 #define FW_PATCH 4
 #define FW_TYPE FIRMWARE_VERSION_TYPE_DEV
 
-#define FORCE_VERSION_H_INCLUDE
-#include <AP_Common/AP_FWVersionDefine.h>
-#undef FORCE_VERSION_H_INCLUDE
-
-const struct GCS_MAVLINK::stream_entries GCS_MAVLINK::all_stream_entries[] {};
-
 /*
  *  GCS backend used for many examples and tools
  */
@@ -29,7 +23,6 @@ private:
     void handleMessage(const mavlink_message_t &msg) override {}
     bool try_send_message(enum ap_message id) override { return true; }
     bool handle_guided_request(AP_Mission::Mission_Command &cmd) override { return true; }
-    void handle_change_alt_request(AP_Mission::Mission_Command &cmd) override {}
 
 protected:
 
@@ -83,11 +76,7 @@ private:
         return (GCS_MAVLINK_Dummy *)_chan[ofs];
     };
 
-    void send_textv(MAV_SEVERITY severity, const char *fmt, va_list arg_list, uint8_t dest_bitmask) override {
-        hal.console->printf("TOGCS: ");
-        hal.console->vprintf(fmt, arg_list);
-        hal.console->printf("\n");
-    }
+    void send_textv(MAV_SEVERITY severity, const char *fmt, va_list arg_list, uint8_t dest_bitmask) override;
 
     MAV_TYPE frame_type() const override { return MAV_TYPE_FIXED_WING; }
     uint32_t custom_mode() const override { return 3; } // magic number

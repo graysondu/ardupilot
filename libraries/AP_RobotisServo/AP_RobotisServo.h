@@ -18,6 +18,14 @@
 
 #pragma once
 
+#include <AP_HAL/AP_HAL_Boards.h>
+
+#ifndef AP_ROBOTISSERVO_ENABLED
+#define AP_ROBOTISSERVO_ENABLED 1
+#endif
+
+#if AP_ROBOTISSERVO_ENABLED
+
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Param/AP_Param.h>
 
@@ -42,7 +50,6 @@ private:
     void init(void);
     void detect_servos();
 
-    uint16_t update_crc(uint16_t crc_accum, uint8_t *data_blk_ptr, uint16_t data_blk_size);
     void add_stuffing(uint8_t *packet);
     void send_packet(uint8_t *txpacket);
     void read_bytes();
@@ -66,3 +73,5 @@ private:
     uint32_t last_send_us;
     uint32_t delay_time_us;
 };
+
+#endif  // AP_ROBOTISSERVO_ENABLED

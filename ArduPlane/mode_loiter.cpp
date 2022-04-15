@@ -3,10 +3,8 @@
 
 bool ModeLoiter::_enter()
 {
-    plane.throttle_allows_nudging = true;
-    plane.auto_throttle_mode = true;
-    plane.auto_navigation_mode = true;
     plane.do_loiter_at_location();
+    plane.setup_terrain_target_alt(plane.next_WP_loc);
     plane.loiter_angle_reset();
 
     return true;

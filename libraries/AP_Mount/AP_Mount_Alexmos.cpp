@@ -57,6 +57,18 @@ void AP_Mount_Alexmos::update()
             }
             break;
 
+        case MAV_MOUNT_MODE_HOME_LOCATION:
+            // constantly update the home location:
+            if (!AP::ahrs().home_is_set()) {
+                break;
+            }
+            _state._roi_target = AP::ahrs().get_home();
+            _state._roi_target_set = true;
+            if (calc_angle_to_roi_target(_angle_ef_target_rad, true, false)) {
+                control_axis(_angle_ef_target_rad, false);
+            }
+            break;
+
         case MAV_MOUNT_MODE_SYSID_TARGET:
             if (calc_angle_to_sysid_target(_angle_ef_target_rad,
                                            true,
@@ -92,7 +104,7 @@ void AP_Mount_Alexmos::send_mount_status(mavlink_channel_t chan)
     }
 
     get_angles();
-    mavlink_msg_mount_status_send(chan, 0, 0, _current_angle.y*100, _current_angle.x*100, _current_angle.z*100);
+    mavlink_msg_mount_status_send(chan, 0, 0, _current_angle.y*100, _current_angle.x*100, _current_angle.z*100, _state._mode);
 }
 
 /*
@@ -200,7 +212,7 @@ void AP_Mount_Alexmos::parse_body()
     switch (_command_id ) {
         case CMD_BOARD_INFO:
             _board_version = _buffer.version._board_version/ 10;
-            _current_firmware_version = _buffer.version._firmware_version / 1000.0f ;
+            _current_firmware_version = _buffer.version._firmware_version * 0.001f ;
             _firmware_beta_version = _buffer.version._firmware_version % 10 ;
             _gimbal_3axis = (_buffer.version._board_features & 0x1);
             _gimbal_bat_monitoring = (_buffer.version._board_features & 0x2);

@@ -13,10 +13,14 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 /*
- *   AP_BoardConfig - px4 driver loading and setup
+ *   AP_BoardConfig - driver loading and setup
  */
 
+
 #include <AP_HAL/AP_HAL.h>
+#if CONFIG_HAL_BOARD == HAL_BOARD_CHIBIOS
+#include <hal.h>
+#endif
 #include "AP_BoardConfig.h"
 #include <GCS_MAVLink/GCS.h>
 #include <AP_Math/crc.h>
@@ -44,6 +48,24 @@ void AP_BoardConfig::board_init_safety()
         }
     }
 #endif
+}
+
+/*
+  init debug pins. We set debug pins as input if BRD_OPTIONS bit for debug enable is not set
+  this prevents possible ESD issues on the debug pins
+ */
+void AP_BoardConfig::board_init_debug()
+{
+#ifndef HAL_BUILD_AP_PERIPH
+    if ((_options & BOARD_OPTION_DEBUG_ENABLE) == 0) {
+#ifdef HAL_GPIO_PIN_JTCK_SWCLK
+        palSetLineMode(HAL_GPIO_PIN_JTCK_SWCLK, PAL_MODE_INPUT);
+#endif
+#ifdef HAL_GPIO_PIN_JTMS_SWDIO
+        palSetLineMode(HAL_GPIO_PIN_JTMS_SWDIO, PAL_MODE_INPUT);
+#endif
+    }
+#endif // HAL_BUILD_AP_PERIPH
 }
 
 
@@ -263,6 +285,10 @@ bool AP_BoardConfig::check_ms5611(const char* devname) {
 #define INV2_WHOAMI_ICM20948 0xEA
 #define INV2_WHOAMI_ICM20649 0xE1
 
+#define INV3REG_WHOAMI        0x75
+
+#define INV3_WHOAMI_ICM42688  0x47
+
 /*
   validation of the board type
  */
@@ -411,28 +437,28 @@ void AP_BoardConfig::board_setup_uart()
 {
 #if AP_FEATURE_RTSCTS
 #ifdef HAL_HAVE_RTSCTS_SERIAL1
-    if (hal.uartC != nullptr) {
-        hal.uartC->set_flow_control((AP_HAL::UARTDriver::flow_control)state.ser_rtscts[1].get());
+    if (hal.serial(1) != nullptr) {
+        hal.serial(1)->set_flow_control((AP_HAL::UARTDriver::flow_control)state.ser_rtscts[1].get());
     }
 #endif
 #ifdef HAL_HAVE_RTSCTS_SERIAL2
-    if (hal.uartD != nullptr) {
-        hal.uartD->set_flow_control((AP_HAL::UARTDriver::flow_control)state.ser_rtscts[2].get());
+    if (hal.serial(2) != nullptr) {
+        hal.serial(2)->set_flow_control((AP_HAL::UARTDriver::flow_control)state.ser_rtscts[2].get());
     }
 #endif
 #ifdef HAL_HAVE_RTSCTS_SERIAL3
-    if (hal.uartB != nullptr) {
-        hal.uartB->set_flow_control((AP_HAL::UARTDriver::flow_control)state.ser_rtscts[3].get());
+    if (hal.serial(3) != nullptr) {
+        hal.serial(3)->set_flow_control((AP_HAL::UARTDriver::flow_control)state.ser_rtscts[3].get());
     }
 #endif
 #ifdef HAL_HAVE_RTSCTS_SERIAL4
-    if (hal.uartE != nullptr) {
-        hal.uartE->set_flow_control((AP_HAL::UARTDriver::flow_control)state.ser_rtscts[4].get());
+    if (hal.serial(4) != nullptr) {
+        hal.serial(4)->set_flow_control((AP_HAL::UARTDriver::flow_control)state.ser_rtscts[4].get());
     }
 #endif
 #ifdef HAL_HAVE_RTSCTS_SERIAL5
-    if (hal.uartF != nullptr) {
-        hal.uartF->set_flow_control((AP_HAL::UARTDriver::flow_control)state.ser_rtscts[5].get());
+    if (hal.serial(5) != nullptr) {
+        hal.serial(5)->set_flow_control((AP_HAL::UARTDriver::flow_control)state.ser_rtscts[5].get());
     }
 #endif
 #endif

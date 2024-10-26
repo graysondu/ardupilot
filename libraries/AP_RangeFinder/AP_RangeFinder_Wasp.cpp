@@ -15,6 +15,8 @@
 
 #include "AP_RangeFinder_Wasp.h"
 
+#if AP_RANGEFINDER_WASP_ENABLED
+
 #include <AP_HAL/AP_HAL.h>
 #include <ctype.h>
 
@@ -84,9 +86,11 @@ bool AP_RangeFinder_Wasp::get_reading(float &reading_m) {
     // read any available lines from the lidar
     float sum = 0;
     uint16_t count = 0;
-    int16_t nbytes = uart->available();
-    while (nbytes-- > 0) {
-        char c = uart->read();
+    for (auto i=0; i<8192; i++) {
+        uint8_t c;
+        if (!uart->read(c)) {
+            break;
+        }
         if (c == '\n') {
             linebuf[linebuf_len] = 0;
             linebuf_len = 0;
@@ -247,3 +251,4 @@ void AP_RangeFinder_Wasp::parse_response(void) {
     }
 }
 
+#endif  // AP_RANGEFINDER_WASP_ENABLED

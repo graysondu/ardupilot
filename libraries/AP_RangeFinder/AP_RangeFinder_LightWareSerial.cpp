@@ -15,6 +15,8 @@
 
 #include "AP_RangeFinder_LightWareSerial.h"
 
+#if AP_RANGEFINDER_LIGHTWARE_SERIAL_ENABLED
+
 #include <AP_HAL/AP_HAL.h>
 #include <ctype.h>
 
@@ -38,10 +40,11 @@ bool AP_RangeFinder_LightWareSerial::get_reading(float &reading_m)
     const int16_t distance_cm_max = max_distance_cm();
 
     // read any available lines from the lidar
-    int16_t nbytes = uart->available();
-    while (nbytes-- > 0) {
-        char c = uart->read();
-
+    for (auto i=0; i<8192; i++) {
+        uint8_t c;
+        if (!uart->read(c)) {
+            break;
+        }
         // use legacy protocol
         if (protocol_state == ProtocolState::UNKNOWN || protocol_state == ProtocolState::LEGACY) {
             if (c == '\r') {
@@ -149,3 +152,5 @@ bool AP_RangeFinder_LightWareSerial::is_lost_signal_distance(int16_t distance_cm
     }
     return false;
 }
+
+#endif

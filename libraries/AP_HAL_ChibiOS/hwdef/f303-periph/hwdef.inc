@@ -65,12 +65,9 @@ define HAL_NO_GPIO_IRQ
 define SERIAL_BUFFERS_SIZE 512
 define PORT_INT_REQUIRED_STACK 64
 
-# avoid timer and RCIN threads to save memory
-define HAL_NO_RCIN_THREAD
 define HAL_NO_RCOUT_THREAD
 
 define HAL_USE_RTC FALSE
-define DISABLE_SERIAL_ESC_COMM TRUE
 
 define DMA_RESERVE_SIZE 0
 
@@ -80,7 +77,6 @@ MAIN_STACK 0x300
 
 # PROCESS_STACK controls stack for main thread
 PROCESS_STACK 0xA00
-define HAL_DISABLE_LOOP_DELAY
 
 # enable CAN support
 PA11 CAN_RX CAN
@@ -100,8 +96,6 @@ define HAL_UART_STACK_SIZE 0x300
 
 define STORAGE_THD_WA_SIZE 512
 define IO_THD_WA_SIZE      512
-
-define HAL_MINIMIZE_FEATURES 0
 
 
 # only one I2C bus
@@ -128,3 +122,5 @@ env ROMFS_UNCOMPRESSED True
 
 # reduce the number of CAN RX Buffer
 define HAL_CAN_RX_QUEUE_SIZE 64
+
+define HAL_MONITOR_THREAD_ENABLED 1

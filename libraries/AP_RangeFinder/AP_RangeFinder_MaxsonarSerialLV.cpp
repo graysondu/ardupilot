@@ -17,6 +17,8 @@
 
 #include "AP_RangeFinder_MaxsonarSerialLV.h"
 
+#if AP_RANGEFINDER_MAXBOTIX_SERIAL_ENABLED
+
 #include <AP_HAL/AP_HAL.h>
 #include <ctype.h>
 
@@ -40,11 +42,13 @@ bool AP_RangeFinder_MaxsonarSerialLV::get_reading(float &reading_m)
     }
 
     int32_t sum = 0;
-    int16_t nbytes = uart->available();
     uint16_t count = 0;
 
-    while (nbytes-- > 0) {
-        char c = uart->read();
+    for (auto i=0; i<8192; i++) {
+        uint8_t c;
+        if (!uart->read(c)) {
+            break;
+        }
         if (c == '\r') {
             linebuf[linebuf_len] = 0;
             sum += (int)atoi(linebuf);
@@ -68,3 +72,5 @@ bool AP_RangeFinder_MaxsonarSerialLV::get_reading(float &reading_m)
 
     return true;
 }
+
+#endif  // AP_RANGEFINDER_MAXBOTIX_SERIAL_ENABLED

@@ -22,7 +22,6 @@ bool ModeStabilize_Heli::init(bool ignore_checks)
 void ModeStabilize_Heli::run()
 {
     float target_roll, target_pitch;
-    float target_yaw_rate;
     float pilot_throttle_scaled;
 
     // apply SIMPLE mode transform to pilot inputs
@@ -32,7 +31,7 @@ void ModeStabilize_Heli::run()
     get_pilot_desired_lean_angles(target_roll, target_pitch, copter.aparm.angle_max, copter.aparm.angle_max);
 
     // get pilot's desired yaw rate
-    target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->norm_input_dz());
+    float target_yaw_rate = get_pilot_desired_yaw_rate();
 
     // get pilot's desired throttle
     pilot_throttle_scaled = copter.input_manager.get_pilot_desired_collective(channel_throttle->get_control_in());
@@ -78,8 +77,8 @@ void ModeStabilize_Heli::run()
     // call attitude controller
     attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(target_roll, target_pitch, target_yaw_rate);
 
-    // output pilot's throttle - note that TradHeli does not used angle-boost
-    attitude_control->set_throttle_out(pilot_throttle_scaled, false, g.throttle_filt);
+    // output pilot's throttle
+    attitude_control->set_throttle_out(pilot_throttle_scaled, true, g.throttle_filt);
 }
 
 #endif  //HELI_FRAME

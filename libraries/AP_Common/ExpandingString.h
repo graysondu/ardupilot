@@ -18,10 +18,14 @@
 
 #pragma once
 
-#include <AP_HAL/AP_HAL.h>
+#include <AP_Common/AP_Common.h>
+
+#include <stdint.h>
 
 class ExpandingString {
 public:
+    ExpandingString() : buf(0), buflen(0), used(0), allocation_failed(false), external_buffer(false) {}
+    ExpandingString(char* s, uint32_t total_len);
 
     const char *get_string(void) const {
         return buf;

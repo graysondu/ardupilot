@@ -13,9 +13,11 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <AP_HAL/AP_HAL.h>
-#include <GCS_MAVLink/GCS.h>
 #include "AP_RangeFinder_BLPing.h"
+
+#if AP_RANGEFINDER_BLPING_ENABLED
+
+#include <AP_HAL/AP_HAL.h>
 
 void AP_RangeFinder_BLPing::update(void)
 {
@@ -59,10 +61,9 @@ bool AP_RangeFinder_BLPing::get_reading(float &reading_m)
     } averageStruct;
 
     // read any available lines from the lidar
-    int16_t nbytes = uart->available();
-    while (nbytes-- > 0) {
-        const int16_t b = uart->read();
-        if (b < 0) {
+    for (auto i=0; i<8192; i++) {
+        uint8_t b;
+        if (!uart->read(b)) {
             break;
         }
         if (protocol.parse_byte(b) == PingProtocol::MessageId::DISTANCE_SIMPLE) {
@@ -79,6 +80,14 @@ bool AP_RangeFinder_BLPing::get_reading(float &reading_m)
 
     // no readings so return false
     return false;
+}
+
+int8_t AP_RangeFinder_BLPing::get_signal_quality_pct() const
+{
+    if (status() != RangeFinder::Status::Good) {
+        return RangeFinder::SIGNAL_QUALITY_UNKNOWN;
+    }
+    return protocol.get_confidence();
 }
 
 uint8_t PingProtocol::get_confidence() const
@@ -226,3 +235,5 @@ PingProtocol::MessageId PingProtocol::parse_byte(uint8_t b)
 
     return msg.done ? get_message_id() : MessageId::INVALID;
 }
+
+#endif  // AP_RANGEFINDER_BLPING_ENABLED

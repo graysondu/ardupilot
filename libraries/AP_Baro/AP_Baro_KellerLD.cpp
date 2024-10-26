@@ -15,6 +15,8 @@
 
 #include "AP_Baro_KellerLD.h"
 
+#if AP_BARO_KELLERLD_ENABLED
+
 #include <utility>
 #include <stdio.h>
 
@@ -53,7 +55,7 @@ AP_Baro_Backend *AP_Baro_KellerLD::probe(AP_Baro &baro, AP_HAL::OwnPtr<AP_HAL::D
     if (!dev) {
         return nullptr;
     }
-    AP_Baro_KellerLD *sensor = new AP_Baro_KellerLD(baro, std::move(dev));
+    AP_Baro_KellerLD *sensor = NEW_NOTHROW AP_Baro_KellerLD(baro, std::move(dev));
     if (!sensor || !sensor->_init()) {
         delete sensor;
         return nullptr;
@@ -319,3 +321,5 @@ void AP_Baro_KellerLD::update()
 
     _copy_to_frontend(_instance, pressure, temperature);
 }
+
+#endif  // AP_BARO_KELLERLD_ENABLED

@@ -13,7 +13,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 /*
-  Send and receve JSON backend data to alow a second AP instance to ride along
+  Send and receive JSON backend data to alow a second AP instance to ride along
 */
 
 #include "SIM_JSON_Master.h"
@@ -22,6 +22,8 @@
 
 #include <AP_Logger/AP_Logger.h>
 #include <errno.h>
+#include <stdio.h>
+#include <SITL/SITL.h>
 
 using namespace SITL;
 
@@ -47,7 +49,7 @@ void JSON_Master::init(const int32_t num_slaves)
         }
 
         printf("Slave %u: listening on %u\n", list->instance, port);
-        list->next = new socket_list;
+        list->next = NEW_NOTHROW socket_list;
         list = list->next;
 
         initialized = true;
@@ -70,7 +72,7 @@ void JSON_Master::receive(struct sitl_input &input)
             uint16_t frame_rate;
             uint32_t frame_count;
             uint16_t pwm[16];
-        } buffer;
+        } buffer{};
 
         while (true) {
             ssize_t ret = list->sock_in.recv(&buffer, sizeof(buffer), 100);
@@ -97,6 +99,7 @@ void JSON_Master::receive(struct sitl_input &input)
             }
         }
 
+#if HAL_LOGGING_ENABLED
         const bool use_servos = list->instance == master_instance;
 
 // @LoggerMessage: SLV1
@@ -156,10 +159,11 @@ void JSON_Master::receive(struct sitl_input &input)
                        buffer.pwm[11],
                        buffer.pwm[12],
                        buffer.pwm[13]);
+#endif
 
         if (list->instance == master_instance) {
             // Use the servo outs from this instance
-            memcpy(input.servos,buffer.pwm,sizeof(input.servos));
+            memcpy(input.servos,buffer.pwm,sizeof(buffer.pwm));
         }
     }
 }
@@ -183,6 +187,7 @@ void JSON_Master::send(const struct sitl_fdm &output, const Vector3d &position)
     for (socket_list *list = &_list; list->next; list=list->next) {
         list->sock_out.send(json_out,length);
     }
+    free(json_out);
 }
 
 

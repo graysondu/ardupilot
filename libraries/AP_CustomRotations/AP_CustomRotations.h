@@ -14,6 +14,10 @@
  */
 #pragma once
 
+#include "AP_CustomRotations_config.h"
+
+#if AP_CUSTOMROTATIONS_ENABLED
+
 #include <AP_Param/AP_Param.h>
 #include <AP_Math/AP_Math.h>
 
@@ -32,7 +36,7 @@ public:
 
 class AP_CustomRotation {
 public:
-    AP_CustomRotation(AP_CustomRotation_params _params);
+    AP_CustomRotation(AP_CustomRotation_params &_params);
 
     void init();
 
@@ -80,3 +84,5 @@ namespace AP {
     AP_CustomRotations &custom_rotations();
 };
 
+
+#endif  // AP_CUSTOMROTATIONS_ENABLED

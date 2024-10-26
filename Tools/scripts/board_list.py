@@ -1,7 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import os
 import re
+import fnmatch
 
 '''
 list of boards for build_binaries.py and custom build server
@@ -23,6 +24,14 @@ class Board(object):
             'Rover',
             'Sub',
         ]
+
+
+def in_blacklist(blacklist, b):
+    '''return true if board b is in the blacklist, including wildcards'''
+    for bl in blacklist:
+        if fnmatch.fnmatch(b, bl):
+            return True
+    return False
 
 
 class BoardList(object):
@@ -53,6 +62,7 @@ class BoardList(object):
         self.boards = [
             Board("erlebrain2"),
             Board("navigator"),
+            Board("navigator64"),
             Board("navio"),
             Board("navio2"),
             Board("edge"),
@@ -61,6 +71,7 @@ class BoardList(object):
             Board("bbbmini"),
             Board("blue"),
             Board("pxfmini"),
+            Board("canzero"),
             Board("SITL_x86_64_linux_gnu"),
             Board("SITL_arm_linux_gnueabihf"),
         ]
@@ -126,11 +137,13 @@ class BoardList(object):
             'iomcu_f103_8MHz',
 
             # bdshot
-            "CubeYellow-bdshot",
             "fmuv3-bdshot",
-            "KakuteF7-bdshot",
-            "OMNIBUSF7V2-bdshot",
-            "Pixhawk1-1M-bdshot",
+
+            # renamed to KakuteH7Mini-Nand
+            "KakuteH7Miniv2",
+
+            # renamed to AtomRCF405NAVI
+            "AtomRCF405"
 
             # other
             "crazyflie2",
@@ -139,9 +152,12 @@ class BoardList(object):
             "MazzyStarDrone",
             "omnibusf4pro-one",
             "skyviper-f412-rev1",
+            "SkystarsH7HD",
+            "*-ODID",
+            "*-ODID-heli",
         ]
 
-        ret = filter(lambda x : x not in blacklist, ret)
+        ret = filter(lambda x : not in_blacklist(blacklist, x), ret)
 
         # if the caller has supplied a vehicle to limit to then we do that here:
         if build_target is not None:
@@ -164,8 +180,6 @@ class BoardList(object):
             "f103-HWESC",
             "f103-Trigger",
             "G4-ESC",
-            "HereID",
-            "HerePro",
         ]
         ret = []
         for x in self.boards:
@@ -181,9 +195,21 @@ AUTOBUILD_BOARDS = BoardList().find_autobuild_boards()
 AP_PERIPH_BOARDS = BoardList().find_ap_periph_boards()
 
 if __name__ == '__main__':
-    import sys
-    if len(sys.argv) < 2:
-        print("Usage: board_list.py TARGET")
-        sys.exit(1)
+    import argparse
+    parser = argparse.ArgumentParser(description='list boards to build')
+
+    parser.add_argument('target')
+    parser.add_argument('--per-line', action='store_true', default=False, help='list one per line for use with xargs')
+    args = parser.parse_args()
     board_list = BoardList()
-    print(sorted(board_list.find_autobuild_boards(sys.argv[1])))
+    target = args.target
+    if target == "AP_Periph":
+        blist = board_list.find_ap_periph_boards()
+    else:
+        blist = board_list.find_autobuild_boards(target)
+    blist = sorted(blist)
+    if args.per_line:
+        for b in blist:
+            print(b)
+    else:
+        print(blist)

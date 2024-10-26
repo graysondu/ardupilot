@@ -13,13 +13,14 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 /*
-  SRV_Channel_aux.cpp - handling of servo auxillary functions
+  SRV_Channel_aux.cpp - handling of servo auxiliary functions
  */
 #include "SRV_Channel.h"
 
 #include <AP_Math/AP_Math.h>
 #include <AP_HAL/AP_HAL.h>
 #include <RC_Channel/RC_Channel.h>
+#include <GCS_MAVLink/GCS.h>
 
 #if NUM_SERVO_CHANNELS == 0
 #pragma GCC diagnostic ignored "-Wtype-limits"
@@ -32,6 +33,7 @@ void SRV_Channel::output_ch(void)
 {
 #ifndef HAL_BUILD_AP_PERIPH
     int8_t passthrough_from = -1;
+    bool passthrough_mapped = false;
 
     // take care of special function cases
     switch(function.get())
@@ -42,6 +44,10 @@ void SRV_Channel::output_ch(void)
     case k_rcin1 ... k_rcin16: // rc pass-thru
         passthrough_from = int8_t((int16_t)function - k_rcin1);
         break;
+    case k_rcin1_mapped ... k_rcin16_mapped:
+        passthrough_from = int8_t((int16_t)function - k_rcin1_mapped);
+        passthrough_mapped = true;
+        break;
     }
     if (passthrough_from != -1) {
         // we are doing passthrough from input to output for this channel
@@ -50,7 +56,31 @@ void SRV_Channel::output_ch(void)
             if (SRV_Channels::passthrough_disabled()) {
                 output_pwm = c->get_radio_trim();
             } else {
-                const int16_t radio_in = c->get_radio_in();
+                // non-mapped rc passthrough
+                int16_t radio_in = c->get_radio_in();
+                if (passthrough_mapped) {
+                    if (rc().has_valid_input()) {
+                        switch (c->get_type()) {
+                        case RC_Channel::ControlType::ANGLE:
+                            radio_in = pwm_from_angle(c->norm_input_dz() * 4500);
+                            break;
+                        case RC_Channel::ControlType::RANGE:
+                            // convert RC normalised input from -1 to +1 range to 0 to +1 and output as range
+                            radio_in = pwm_from_range((c->norm_input_ignore_trim() + 1.0) * 0.5 * 4500);
+                            break;
+                        }
+                    } else {
+                        // no valid input.  If we are in radio
+                        // failsafe then go to trim values (if
+                        // configured for this channel).  Otherwise
+                        // use the last-good value
+                        if ( ((1U<<passthrough_from) & SRV_Channels::get_rc_fs_mask()) && rc().in_rc_failsafe()) {
+                            radio_in = pwm_from_angle(0);
+                        } else {
+                            radio_in = previous_radio_in;
+                        }
+                    }
+                }
                 if (!ign_small_rcin_changes) {
                     output_pwm = radio_in;
                     previous_radio_in = radio_in;
@@ -76,7 +106,13 @@ void SRV_Channel::output_ch(void)
  */
 void SRV_Channels::output_ch_all(void)
 {
-    for (uint8_t i = 0; i < NUM_SERVO_CHANNELS; i++) {
+    uint8_t max_chan = NUM_SERVO_CHANNELS;
+#if NUM_SERVO_CHANNELS >= 17
+    if (_singleton != nullptr && _singleton->enable_32_channels.get() <= 0) {
+        max_chan = 16;
+    }
+#endif
+    for (uint8_t i = 0; i < max_chan; i++) {
         channels[i].output_ch();
     }
 }
@@ -104,6 +140,7 @@ void SRV_Channel::aux_servo_function_setup(void)
     case k_flap:
     case k_flap_auto:
     case k_egg_drop:
+    case k_lift_release:
         set_range(100);
         break;
     case k_heli_rsc:
@@ -153,6 +190,7 @@ void SRV_Channel::aux_servo_function_setup(void)
     case k_roll_out:
     case k_pitch_out:
     case k_yaw_out:
+    case k_rcin1_mapped ... k_rcin16_mapped:
         set_angle(4500);
         break;
     case k_throttle:
@@ -178,10 +216,12 @@ void SRV_Channels::update_aux_servo_function(void)
     for (uint16_t i = 0; i < SRV_Channel::k_nr_aux_servo_functions; i++) {
         functions[i].channel_mask = 0;
     }
+    invalid_mask = 0;
 
     // set auxiliary ranges
     for (uint8_t i = 0; i < NUM_SERVO_CHANNELS; i++) {
         if (!channels[i].valid_function()) {
+            invalid_mask |= 1U<<i;
             continue;
         }
         const uint16_t function = channels[i].function.get();
@@ -192,7 +232,7 @@ void SRV_Channels::update_aux_servo_function(void)
     initialised = true;
 }
 
-/// Should be called after the the servo functions have been initialized
+/// Should be called after the servo functions have been initialized
 /// called at 1Hz
 void SRV_Channels::enable_aux_servos()
 {
@@ -206,7 +246,7 @@ void SRV_Channels::enable_aux_servos()
     for (uint8_t i = 0; i < NUM_SERVO_CHANNELS; i++) {
         SRV_Channel &c = channels[i];
         // see if it is a valid function
-        if (c.valid_function()) {
+        if (c.valid_function() && !(disabled_mask & (1U<<c.ch_num))) {
             hal.rcout->enable_ch(c.ch_num);
         } else {
             hal.rcout->disable_ch(c.ch_num);
@@ -244,26 +284,47 @@ void SRV_Channels::enable_aux_servos()
     set TRIM to either 1000 or 1500 depending on whether the channel
     is reversible
 */
-void SRV_Channels::set_digital_outputs(uint16_t dig_mask, uint16_t rev_mask) {
+void SRV_Channels::set_digital_outputs(uint32_t dig_mask, uint32_t rev_mask) {
     digital_mask |= dig_mask;
     reversible_mask |= rev_mask;
+
+    // add in NeoPixel and ProfiLED functions to digital array to determine anything else
+    // that should be disabled
+    for (uint8_t i = 0; i < NUM_SERVO_CHANNELS; i++) {
+        SRV_Channel &c = channels[i];
+        switch (c.function.get()) {
+            case SRV_Channel::k_LED_neopixel1:
+            case SRV_Channel::k_LED_neopixel2:
+            case SRV_Channel::k_LED_neopixel3:
+            case SRV_Channel::k_LED_neopixel4:
+            case SRV_Channel::k_ProfiLED_1:
+            case SRV_Channel::k_ProfiLED_2:
+            case SRV_Channel::k_ProfiLED_3:
+            case SRV_Channel::k_ProfiLED_Clock:
+                dig_mask |= 1U<<c.ch_num;
+                break;
+            default:
+                break;
+        }
+    }
+    disabled_mask = hal.rcout->get_disabled_channels(dig_mask);
 
     for (uint8_t i = 0; i < NUM_SERVO_CHANNELS; i++) {
         SRV_Channel &c = channels[i];
         if (digital_mask & (1U<<i)) {
-            c.servo_min.set(1000);
-            c.servo_max.set(2000);
+            c.servo_min.set_and_default(1000);
+            c.servo_max.set_and_default(2000);
             if (reversible_mask & (1U<<i)) {
-                c.servo_trim.set(1500);
+                c.servo_trim.set_and_default(1500);
             } else {
-                c.servo_trim.set(1000);
+                c.servo_trim.set_and_default(1000);
             }
         }
     }
 }
 
 /// enable output channels using a channel mask
-void SRV_Channels::enable_by_mask(uint16_t mask)
+void SRV_Channels::enable_by_mask(uint32_t mask)
 {
     for (uint8_t i = 0; i < NUM_SERVO_CHANNELS; i++) {
         if (mask & (1U<<i)) {
@@ -330,6 +391,7 @@ SRV_Channels::set_trim_to_servo_out_for(SRV_Channel::Aux_servo_function_t functi
     }
 }
 
+#if AP_RC_CHANNEL_ENABLED
 /*
   copy radio_in to radio_out for a given function
  */
@@ -357,7 +419,7 @@ SRV_Channels::copy_radio_in_out(SRV_Channel::Aux_servo_function_t function, bool
   copy radio_in to radio_out for a channel mask
  */
 void
-SRV_Channels::copy_radio_in_out_mask(uint16_t mask)
+SRV_Channels::copy_radio_in_out_mask(uint32_t mask)
 {
     for (uint8_t i = 0; i < NUM_SERVO_CHANNELS; i++) {
         if ((1U<<i) & mask) {
@@ -370,6 +432,7 @@ SRV_Channels::copy_radio_in_out_mask(uint16_t mask)
     }
 
 }
+#endif  // AP_RC_CHANNEL_ENABLED
 
 /*
   setup failsafe value for an auxiliary function type to a Limit
@@ -420,6 +483,7 @@ SRV_Channels::set_output_limit(SRV_Channel::Aux_servo_function_t function, SRV_C
         if (c.function == function) {
             uint16_t pwm = c.get_limit_pwm(limit);
             c.set_output_pwm(pwm);
+#if AP_RC_CHANNEL_ENABLED
             if (c.function == SRV_Channel::k_manual) {
                 RC_Channel *cin = rc().channel(c.ch_num);
                 if (cin != nullptr) {
@@ -428,6 +492,7 @@ SRV_Channels::set_output_limit(SRV_Channel::Aux_servo_function_t function, SRV_C
                     cin->set_radio_in(pwm);
                 }
             }
+#endif
         }
     }
 }
@@ -489,7 +554,7 @@ bool SRV_Channels::set_aux_channel_default(SRV_Channel::Aux_servo_function_t fun
         return false;
     }
     channels[channel].type_setup = false;
-    channels[channel].function.set(function);
+    channels[channel].function.set_and_default(function);
     channels[channel].aux_servo_function_setup();
     function_mask.set((uint16_t)function);
     if (SRV_Channel::valid_function(function)) {
@@ -501,27 +566,33 @@ bool SRV_Channels::set_aux_channel_default(SRV_Channel::Aux_servo_function_t fun
 // find first channel that a function is assigned to
 bool SRV_Channels::find_channel(SRV_Channel::Aux_servo_function_t function, uint8_t &chan)
 {
-    if (!function_assigned(function)) {
+    // Must have populated channel masks
+    if (!initialised) {
+        update_aux_servo_function();
+    }
+
+    // Make sure function is valid
+    if (!SRV_Channel::valid_function(function)) {
         return false;
     }
-    for (uint8_t i=0; i<NUM_SERVO_CHANNELS; i++) {
-        if (channels[i].function == function) {
-            chan = channels[i].ch_num;
-            return true;
-        }
+
+    // Get the index of the first set bit, returns 0 if no bits are set
+    const int first_chan = __builtin_ffs(functions[function].channel_mask);
+    if (first_chan == 0) {
+        return false;
     }
-    return false;
+
+    // Convert to 0 indexed
+    chan = first_chan - 1;
+    return true;
 }
 
 /*
-  get a pointer to first auxillary channel for a channel function
+  get a pointer to first auxiliary channel for a channel function
 */
-SRV_Channel *SRV_Channels::get_channel_for(SRV_Channel::Aux_servo_function_t function, int8_t default_chan)
+SRV_Channel *SRV_Channels::get_channel_for(SRV_Channel::Aux_servo_function_t function)
 {
     uint8_t chan;
-    if (default_chan >= 0) {
-        set_aux_channel_default(function, default_chan);
-    }
     if (!find_channel(function, chan)) {
         return nullptr;
     }
@@ -566,7 +637,7 @@ float SRV_Channels::get_slew_limited_output_scaled(SRV_Channel::Aux_servo_functi
 /*
   get mask of output channels for a function
  */
-uint16_t SRV_Channels::get_output_channel_mask(SRV_Channel::Aux_servo_function_t function)
+uint32_t SRV_Channels::get_output_channel_mask(SRV_Channel::Aux_servo_function_t function)
 {
     if (!initialised) {
         update_aux_servo_function();
@@ -574,7 +645,7 @@ uint16_t SRV_Channels::get_output_channel_mask(SRV_Channel::Aux_servo_function_t
     if (SRV_Channel::valid_function(function)) {
         return functions[function].channel_mask;
     }
-    return 0;
+    return invalid_mask;
 }
 
 
@@ -583,7 +654,7 @@ void SRV_Channels::set_trim_to_pwm_for(SRV_Channel::Aux_servo_function_t functio
 {
     for (uint8_t i=0; i<NUM_SERVO_CHANNELS; i++) {
         if (channels[i].function == function) {
-            channels[i].servo_trim.set(pwm);
+            channels[i].servo_trim.set_and_default(pwm);
         }
     }
 }
@@ -593,7 +664,7 @@ void SRV_Channels::set_trim_to_min_for(SRV_Channel::Aux_servo_function_t functio
 {
     for (uint8_t i=0; i<NUM_SERVO_CHANNELS; i++) {
         if (channels[i].function == function) {
-            channels[i].servo_trim.set((channels[i].get_reversed() && !ignore_reversed)?channels[i].servo_max:channels[i].servo_min);
+            channels[i].servo_trim.set_and_default((channels[i].get_reversed() && !ignore_reversed)?channels[i].servo_max:channels[i].servo_min);
         }
     }
 }
@@ -645,7 +716,7 @@ void SRV_Channels::adjust_trim(SRV_Channel::Aux_servo_function_t function, float
         } else if (change < 0 && trim_scaled > 0.4f) {
             new_trim--;
         } else {
-            return;
+            continue;
         }
         c.servo_trim.set(new_trim);
 
@@ -733,7 +804,7 @@ void SRV_Channels::set_slew_rate(SRV_Channel::Aux_servo_function_t function, flo
     }
 
     // add new item
-    slew_list *new_slew = new slew_list(function);
+    slew_list *new_slew = NEW_NOTHROW slew_list(function);
     if (new_slew == nullptr) {
         return;
     }
@@ -774,6 +845,31 @@ void SRV_Channels::set_output_min_max(SRV_Channel::Aux_servo_function_t function
     }
 }
 
+// set MIN/MAX parameter defaults for a function
+void SRV_Channels::set_output_min_max_defaults(SRV_Channel::Aux_servo_function_t function, uint16_t min_pwm, uint16_t max_pwm)
+{
+    for (uint8_t i=0; i<NUM_SERVO_CHANNELS; i++) {
+        if (channels[i].function == function) {
+            channels[i].servo_min.set_default(min_pwm);
+            channels[i].servo_max.set_default(max_pwm);
+        }
+    }
+}
+
+// Save MIN/MAX/REVERSED parameters for a function
+void SRV_Channels::save_output_min_max(SRV_Channel::Aux_servo_function_t function, uint16_t min_pwm, uint16_t max_pwm)
+{
+    for (uint8_t i=0; i<NUM_SERVO_CHANNELS; i++) {
+        if (channels[i].function == function) {
+            // If min is larger than max swap and set reversed
+            const bool reversed = min_pwm > max_pwm;
+            channels[i].servo_min.set_and_save(reversed ? max_pwm : min_pwm);
+            channels[i].servo_max.set_and_save(reversed ? min_pwm : max_pwm);
+            channels[i].reversed.set_and_save(reversed ? 1 : 0);
+        }
+    }
+}
+
 // constrain to output min/max for function
 void SRV_Channels::constrain_pwm(SRV_Channel::Aux_servo_function_t function)
 {
@@ -792,6 +888,7 @@ void SRV_Channels::constrain_pwm(SRV_Channel::Aux_servo_function_t function)
 */
 void SRV_Channels::upgrade_parameters(void)
 {
+    // PARAMETER_CONVERSION - Added: Jan-2020
     for (uint8_t i=0; i<NUM_SERVO_CHANNELS; i++) {
         SRV_Channel &c = channels[i];
         // convert from AP_Int8 to AP_Int16
@@ -802,7 +899,7 @@ void SRV_Channels::upgrade_parameters(void)
 // set RC output frequency on a function output
 void SRV_Channels::set_rc_frequency(SRV_Channel::Aux_servo_function_t function, uint16_t frequency_hz)
 {
-    uint16_t mask = 0;
+    uint32_t mask = 0;
     for (uint8_t i=0; i<NUM_SERVO_CHANNELS; i++) {
         SRV_Channel &c = channels[i];
         if (c.function == function) {

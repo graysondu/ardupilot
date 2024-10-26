@@ -17,6 +17,8 @@
  */
 #include "AP_RangeFinder_TeraRangerI2C.h"
 
+#if AP_RANGEFINDER_TRI2C_ENABLED
+
 #include <utility>
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Math/crc.h>
@@ -51,7 +53,7 @@ AP_RangeFinder_Backend *AP_RangeFinder_TeraRangerI2C::detect(RangeFinder::RangeF
         return nullptr;
     }
 
-    AP_RangeFinder_TeraRangerI2C *sensor = new AP_RangeFinder_TeraRangerI2C(_state, _params, std::move(i2c_dev));
+    AP_RangeFinder_TeraRangerI2C *sensor = NEW_NOTHROW AP_RangeFinder_TeraRangerI2C(_state, _params, std::move(i2c_dev));
     if (!sensor) {
         return nullptr;
     }
@@ -189,3 +191,5 @@ void AP_RangeFinder_TeraRangerI2C::update(void)
         set_status(RangeFinder::Status::NoData);
     }
 }
+
+#endif  // AP_RANGEFINDER_TRI2C_ENABLED

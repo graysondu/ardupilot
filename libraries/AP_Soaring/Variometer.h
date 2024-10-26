@@ -5,14 +5,15 @@ Manages the estimation of aircraft total energy, drag and vertical air velocity.
 */
 #pragma once
 
-#include <AP_AHRS/AP_AHRS.h>
 #include <AP_Param/AP_Param.h>
 #include <Filter/AverageFilter.h>
-#include <AP_Vehicle/AP_Vehicle.h>
+#include <Filter/LowPassFilter.h>
+#include <AP_Vehicle/AP_FixedWing.h>
+#include <AP_Common/Location.h>
 
 class Variometer {
 
-    const AP_Vehicle::FixedWing &_aparm;
+    const AP_FixedWing &_aparm;
 
     // store time of last update
     uint64_t _prev_update_time;
@@ -53,7 +54,7 @@ public:
         AP_Float B;
     };
 
-    Variometer(const AP_Vehicle::FixedWing &parms, PolarParams &polarParams);
+    Variometer(const AP_FixedWing &parms, const PolarParams &polarParams);
 
     float alt;
     float reading;
@@ -78,9 +79,9 @@ public:
 
     float get_exp_thermalling_sink(void) const {return _expected_thermalling_sink;};
 
-    float calculate_circling_time_constant(const float thermal_bank);
+    float calculate_circling_time_constant(const float thermal_bank) const;
 
 private:
-    PolarParams &_polarParams;
+    const PolarParams &_polarParams;
 };
 

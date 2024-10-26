@@ -13,14 +13,14 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <AP_HAL/AP_HAL.h>
 #include "AP_RangeFinder_USD1_Serial.h"
+
+#if AP_RANGEFINDER_USD1_SERIAL_ENABLED
+
 #include <ctype.h>
 
 #define USD1_HDR 254   // Header Byte from USD1_Serial (0xFE)
 #define USD1_HDR_V0 72 // Header Byte for beta V0 of USD1_Serial (0x48)
-
-extern const AP_HAL::HAL& hal;
 
 /*
    detect USD1_Serial Firmware Version
@@ -39,11 +39,11 @@ bool AP_RangeFinder_USD1_Serial::detect_version(void)
     uint8_t count = 0;
 
     // read any available data from USD1_Serial
-    int16_t nbytes = uart->available();
-
-    while (nbytes-- > 0) {
-        uint8_t c = uart->read();
-        
+    for (auto i=0; i<8192; i++) {
+        uint8_t c;
+        if (!uart->read(c)) {
+            break;
+        }
         if (((c == USD1_HDR_V0) || (c == USD1_HDR)) && !hdr_found) {
             byte1 = c;
             hdr_found = true;
@@ -121,11 +121,11 @@ bool AP_RangeFinder_USD1_Serial::get_reading(float &reading_m)
     uint16_t count = 0;
     bool hdr_found = false;
 
-    int16_t nbytes = uart->available();
-
-    while (nbytes-- > 0) {
-        uint8_t c = uart->read();
-        
+    for (auto i=0; i<8192; i++) {
+        uint8_t c;
+        if (!uart->read(c)) {
+            break;
+        }
         if ((c == _header) && !hdr_found) {
             // located header byte
             _linebuf_len = 0;
@@ -173,3 +173,5 @@ bool AP_RangeFinder_USD1_Serial::get_reading(float &reading_m)
 
     return true;
 }
+
+#endif  // AP_RANGEFINDER_USD1_SERIAL_ENABLED

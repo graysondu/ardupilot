@@ -18,6 +18,9 @@
  */
 
 #include "AP_Airspeed_DLVR.h"
+
+#if AP_AIRSPEED_DLVR_ENABLED
+
 #include <AP_Math/AP_Math.h>
 
 extern const AP_HAL::HAL &hal;
@@ -47,7 +50,7 @@ AP_Airspeed_Backend *AP_Airspeed_DLVR::probe(AP_Airspeed &_frontend,
     if (!_dev) {
         return nullptr;
     }
-    AP_Airspeed_DLVR *sensor = new AP_Airspeed_DLVR(_frontend, _instance, _range_inH2O);
+    AP_Airspeed_DLVR *sensor = NEW_NOTHROW AP_Airspeed_DLVR(_frontend, _instance, _range_inH2O);
     if (!sensor) {
         return nullptr;
     }
@@ -176,3 +179,5 @@ bool AP_Airspeed_DLVR::get_temperature(float &_temperature)
     _temperature = temperature;
     return true;
 }
+
+#endif

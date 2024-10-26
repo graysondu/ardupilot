@@ -1,10 +1,10 @@
 #pragma once
 
-#include <AP_HAL/AP_HAL.h>
 #include <AP_Logger/LogStructure.h>
 #include <AP_Param/AP_Param.h>
-#include <AP_Vehicle/AP_Vehicle.h>
-#include <AC_PID/AC_PID.h>
+#include <AP_Vehicle/AP_FixedWing.h>
+#include <Filter/SlewLimiter.h>
+
 #include <Filter/ModeFilter.h>
 
 class AP_AutoTune
@@ -22,6 +22,11 @@ public:
         AUTOTUNE_ROLL  = 0,
         AUTOTUNE_PITCH = 1,
         AUTOTUNE_YAW = 2,
+    };
+
+    enum Options {
+        DISABLE_FLTD_UPDATE = 0,
+        DISABLE_FLTT_UPDATE = 1
     };
 
     struct PACKED log_ATRP {
@@ -42,9 +47,8 @@ public:
         float tau;
     };
 
-
     // constructor
-    AP_AutoTune(ATGains &_gains, ATType type, const AP_Vehicle::FixedWing &parms, AC_PID &rpid);
+    AP_AutoTune(ATGains &_gains, ATType type, const AP_FixedWing &parms, class AC_PID &rpid);
 
     // called when autotune mode is entered
     void start(void);
@@ -55,7 +59,7 @@ public:
 
     // update called whenever autotune mode is active. This is
     // called at the main loop rate
-    void update(AP_PIDInfo &pid_info, float scaler, float angle_err_deg);
+    void update(struct AP_PIDInfo &pid_info, float scaler, float angle_err_deg);
 
     // are we running?
     bool running;
@@ -63,12 +67,12 @@ public:
 private:
     // the current gains
     ATGains &current;
-    AC_PID &rpid;
+    class AC_PID &rpid;
 
     // what type of autotune is this
     ATType type;
 
-    const AP_Vehicle::FixedWing &aparm;
+    const AP_FixedWing &aparm;
 
     // values to restore if we leave autotune mode
     ATGains restore;
@@ -116,12 +120,16 @@ private:
     // update rmax and tau towards target
     void update_rmax();
 
+    bool has_option(Options option) {
+        return (aparm.autotune_options.get() & uint32_t(1<<uint32_t(option))) != 0;
+    }
+
     // 5 point mode filter for FF estimate
     ModeFilterFloat_Size5 ff_filter;
 
-    LowPassFilterFloat actuator_filter;
-    LowPassFilterFloat rate_filter;
-    LowPassFilterFloat target_filter;
+    LowPassFilterConstDtFloat actuator_filter;
+    LowPassFilterConstDtFloat rate_filter;
+    LowPassFilterConstDtFloat target_filter;
 
     // separate slew limiters for P and D
     float slew_limit_max, slew_limit_tau;
